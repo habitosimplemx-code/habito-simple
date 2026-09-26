@@ -1,0 +1,283 @@
+import os
+import shutil
+import subprocess
+
+FFMPEG = os.environ.get("FFMPEG_BIN", "ffmpeg")
+WATERMARK = os.environ.get("WATERMARK_TEXT", "@habitosimplemx")
+SUB_FONT = os.environ.get("SUB_FONT", "DejaVu Sans")
+
+# Disclaimer FIJO (seguridad visible): se dibuja SIEMPRE, no depende de la IA.
+DISCLAIMER_TEXT = os.environ.get("DISCLAIMER_TEXT", "Info general · No sustituye a tu médico").strip()
+
+# Acento de marca (verde salud) para hook, tarjetas y outro.
+ACCENT_HEX = os.environ.get("ACCENT_HEX", "0x2FC892").strip()
+
+BG_TARGET_LUMA = float(os.environ.get("BG_TARGET_LUMA", "105"))
+BG_VIGNETTE = os.environ.get("BG_VIGNETTE", "PI/5").strip()
+
+CARD_MAX_W = int(os.environ.get("CARD_MAX_W", "940"))
+
+CARD_SHOW_SMALL = os.environ.get("CARD_SHOW_SMALL", "1").strip().lower() in ("1", "true", "yes")
+
+HOOK_DUR = float(os.environ.get("HOOK_DUR", "2.8"))
+
+OUTRO_CTA = os.environ.get("OUTRO_CTA", "SÍGUEME").strip()
+OUTRO_SUB = os.environ.get("OUTRO_SUB", "un hábito nuevo cada día").strip()
+OUTRO_DUR = float(os.environ.get("OUTRO_DUR", "3.0"))
+
+_FIT_FONT_CANDIDATES = [
+    os.environ.get("IMG_FONT_FILE", ""),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "C:\\Windows\\Fonts\\arialbd.ttf",
+    "C:\\Windows\\Fonts\\Arial.ttf",
+    "/Library/Fonts/Arial Bold.ttf",
+]
+
+
+def _fit_fontsize(text: str, max_w: int, start: int, minimum: int) -> int:
+    """Devuelve el fontsize (<= start, >= minimum) con el que 'text' cabe en max_w px."""
+    text = (text or "").strip()
+    if not text:
+        return start
+    path = next((p for p in _FIT_FONT_CANDIDATES if p and os.path.isfile(p)), None)
+    if path:
+        try:
+            from PIL import ImageFont
+            size = start
+            while size > minimum:
+                if ImageFont.truetype(path, size).getlength(text) <= max_w:
+                    return size
+                size -= 4
+            return minimum
+        except Exception:
+            pass
+    size = start
+    while size > minimum and 0.62 * size * len(text) > max_w:
+        size -= 4
+    return size
+
+
+def _escape_drawtext(txt: str) -> str:
+    return (txt.replace("\\", "\\\\")
+               .replace(":", "\\:")
+               .replace("'", "\\'")
+               .replace("%", "\\\\%"))
+
+
+def _measure_luma(path: str):
+    """Devuelve el brillo promedio (0-255) de los primeros ~2s del clip, o None."""
+    try:
+        p = subprocess.run(
+            [FFMPEG, "-hide_banner", "-i", path,
+             "-vf", "select='lt(t\\,2)',signalstats,metadata=print",
+             "-an", "-f", "null", "-"],
+            capture_output=True, text=True, timeout=90,
+        )
+        salida = (p.stderr or "") + (p.stdout or "")
+        vals = []
+        for line in salida.splitlines():
+            if "signalstats.YAVG=" in line:
+                try:
+                    vals.append(float(line.split("signalstats.YAVG=")[1].split()[0]))
+                except Exception:
+                    pass
+        if vals:
+            return sum(vals) / len(vals)
+    except Exception as e:
+        print(f"    (no se pudo medir brillo del b-roll: {e})")
+    return None
+
+
+def _brightness_delta(bg_video: str) -> float:
+    """Calcula el ajuste de brillo (rango eq: -1..1) para acercar el clip al objetivo."""
+    yavg = _measure_luma(bg_video)
+    if yavg is None:
+        return -0.06
+    delta = (BG_TARGET_LUMA - yavg) / 255.0
+    delta = max(-0.15, min(0.22, delta))
+    print(f"    brillo b-roll YAVG={yavg:.0f} -> eq brightness={delta:+.3f}")
+    return delta
+
+
+MUSIC_DIR = os.environ.get("MUSIC_DIR", "assets/music")
+MUSIC_VOLUME = os.environ.get("MUSIC_VOLUME", "0.17")
+
+
+def _pick_music():
+    """Elige al azar una pista de assets/music/. Si no hay carpeta o está vacía,
+    devuelve None y el video sale solo con la voz (sin romperse)."""
+    import glob
+    import random
+    if not os.path.isdir(MUSIC_DIR):
+        return None
+    files = []
+    for ext in ("*.mp3", "*.m4a", "*.wav", "*.ogg"):
+        files += glob.glob(os.path.join(MUSIC_DIR, ext))
+    return random.choice(files) if files else None
+
+
+def build_video(audio_path, ass_path, out_path, bg_video=None, cards=None,
+                graphics=None, duration=None, hook=None):
+    """cards: lista opcional de dicts {'big': '70%', 'small': 'texto', 'start': s, 'end': s}.
+    graphics: lista opcional de dicts {'pattern': ruta_%05d.png, 'start': s, 'end': s, 'fps': n}.
+    duration: si se pasa, corta la salida a esos segundos (en vez de -shortest)."""
+    if shutil.which(FFMPEG) is None and not os.path.isfile(FFMPEG):
+        raise FileNotFoundError(
+            "No se encontró FFmpeg. Instálalo con 'winget install -e --id Gyan.FFmpeg' "
+            "y abre una terminal NUEVA, o define FFMPEG_BIN con la ruta completa a ffmpeg.exe."
+        )
+
+    work_dir = os.path.dirname(os.path.abspath(ass_path)) or "."
+    audio = os.path.basename(audio_path)
+    subs = os.path.basename(ass_path)
+    out = os.path.basename(out_path)
+
+    if bg_video:
+        bg = os.path.basename(bg_video)
+        inputs = ["-stream_loop", "-1", "-i", bg, "-i", audio]
+        delta = _brightness_delta(bg_video)
+        vig = f",vignette={BG_VIGNETTE}" if BG_VIGNETTE and BG_VIGNETTE != "0" else ""
+        base = (
+            "[0:v]scale=1188:2112:force_original_aspect_ratio=increase,crop=1188:2112,"
+            f"eq=brightness={delta:.3f}:contrast=1.06:saturation=1.12{vig},setsar=1,"
+            "crop=1080:1920:x='(in_w-out_w)/2+40*sin(t/5)':y='(in_h-out_h)/2+50*sin(t/7)'[bg]"
+        )
+    else:
+        # Degradado de marca (verde salud)
+        c0 = os.environ.get("BG_C0", "0x14544A")
+        c1 = os.environ.get("BG_C1", "0x061816")
+        grad = (f"gradients=s=1080x1920:c0={c0}:c1={c1}"
+                ":x0=0:y0=0:x1=1080:y1=1920:speed=0.008:rate=30")
+        inputs = ["-f", "lavfi", "-i", grad, "-i", audio]
+        base = "[0:v]setsar=1[bg]"
+
+    chain = [base]
+    last = "bg"
+
+    if hook:
+        raw_hook = str(hook).strip().upper()
+        hook_fs = _fit_fontsize(raw_hook, CARD_MAX_W, 130, 64)
+        htxt = _escape_drawtext(raw_hook)
+        yexpr = "h*0.30+80*(1-min(t/0.45,1))"
+        alpha = (f"if(lt(t,0.35),t/0.35,"
+                 f"if(gt(t,{HOOK_DUR - 0.3:.2f}),max(0,({HOOK_DUR:.2f}-t)/0.3),1))")
+        chain.append(
+            f"[{last}]drawtext=font='{SUB_FONT}':text='{htxt}':fontcolor={ACCENT_HEX}:"
+            f"fontsize={hook_fs}:borderw=9:bordercolor=black:shadowcolor=black@0.6:"
+            f"shadowx=4:shadowy=4:x=(w-tw)/2:y='{yexpr}':alpha='{alpha}':"
+            f"enable='between(t,0,{HOOK_DUR:.2f})'[hook]"
+        )
+        last = "hook"
+
+    for i, card in enumerate(cards or []):
+        raw_big = str(card.get("big", ""))
+        raw_small = str(card.get("small", ""))
+        big_fs = _fit_fontsize(raw_big, CARD_MAX_W, 170, 70)
+        small_fs = _fit_fontsize(raw_small, CARD_MAX_W, 52, 34)
+        big = _escape_drawtext(raw_big)
+        small = _escape_drawtext(raw_small)
+        st, en = float(card["start"]), float(card["end"])
+
+        chain.append(
+            f"[{last}]drawtext=font='{SUB_FONT}':text='{big}':fontcolor={ACCENT_HEX}:"
+            f"fontsize={big_fs}:borderw=6:bordercolor=black:x=(w-tw)/2:y=h*0.20:"
+            f"enable='between(t,{st},{en})'[c{i}a]"
+        )
+        last = f"c{i}a"
+
+        if CARD_SHOW_SMALL and raw_small.strip():
+            chain.append(
+                f"[{last}]drawtext=font='{SUB_FONT}':text='{small}':fontcolor=white:"
+                f"fontsize={small_fs}:borderw=4:bordercolor=black:x=(w-tw)/2:y=h*0.34:"
+                f"enable='between(t,{st},{en})'[c{i}b]"
+            )
+            last = f"c{i}b"
+
+    graphics = graphics or []
+    for gi, g in enumerate(graphics):
+        inputs += ["-itsoffset", f"{g['start']}", "-framerate", str(g.get("fps", 30)),
+                   "-i", g["pattern"]]
+    for gi, g in enumerate(graphics):
+        idx = 2 + gi
+        chain.append(
+            f"[{last}][{idx}:v]overlay=0:0:"
+            f"enable='between(t,{g['start']},{g['end']})':eof_action=pass[g{gi}]"
+        )
+        last = f"g{gi}"
+
+    chain.append(f"[{last}]subtitles={subs}[subd]")
+    last = "subd"
+
+    if OUTRO_CTA and duration:
+        oc_st = max(0.0, float(duration) - OUTRO_DUR)
+        oc_alpha = (f"if(lt(t,{oc_st:.2f}),0,"
+                    f"if(lt(t,{oc_st + 0.3:.2f}),(t-{oc_st:.2f})/0.3,1))")
+        big_txt = _escape_drawtext(OUTRO_CTA.upper())
+        big_fs = _fit_fontsize(OUTRO_CTA.upper(), CARD_MAX_W, 150, 90)
+        chain.append(
+            f"[{last}]drawtext=font='{SUB_FONT}':text='{big_txt}':fontcolor={ACCENT_HEX}:"
+            f"fontsize={big_fs}:borderw=8:bordercolor=black:shadowcolor=black@0.6:"
+            f"shadowx=4:shadowy=4:x=(w-tw)/2:y=h*0.40:alpha='{oc_alpha}':"
+            f"enable='between(t,{oc_st:.2f},{float(duration):.2f})'[octa]"
+        )
+        last = "octa"
+        if OUTRO_SUB:
+            sub_txt = _escape_drawtext(OUTRO_SUB)
+            sub_fs = _fit_fontsize(OUTRO_SUB, CARD_MAX_W, 58, 40)
+            chain.append(
+                f"[{last}]drawtext=font='{SUB_FONT}':text='{sub_txt}':fontcolor=white:"
+                f"fontsize={sub_fs}:borderw=4:bordercolor=black:x=(w-tw)/2:"
+                f"y=h*0.40+{big_fs + 24}:alpha='{oc_alpha}':"
+                f"enable='between(t,{oc_st:.2f},{float(duration):.2f})'[octb]"
+            )
+            last = "octb"
+
+    # Marca de agua (centrada, justo arriba del disclaimer)
+    wm = _escape_drawtext(WATERMARK)
+    chain.append(
+        f"[{last}]drawtext=font='{SUB_FONT}':text='{wm}':fontcolor=white@0.75:"
+        f"fontsize=38:borderw=3:bordercolor=black@0.6:x=(w-tw)/2:y=h-170[vwm]"
+    )
+    last = "vwm"
+
+    # Disclaimer FIJO (seguridad visible) — chip centrado abajo, SIEMPRE presente.
+    if DISCLAIMER_TEXT:
+        dtxt = _escape_drawtext(DISCLAIMER_TEXT)
+        chain.append(
+            f"[{last}]drawtext=font='{SUB_FONT}':text='{dtxt}':fontcolor=white@0.92:"
+            f"fontsize=34:box=1:boxcolor=black@0.42:boxborderw=14:"
+            f"x=(w-tw)/2:y=h-64[v]"
+        )
+    else:
+        chain.append(f"[{last}]null[v]")
+
+    vf = ";".join(chain)
+
+    music = _pick_music()
+    audio_map = "1:a"
+    if music:
+        music_idx = 2 + len(graphics)
+        inputs += ["-stream_loop", "-1", "-i", os.path.abspath(music)]
+        amix = (f"[{music_idx}:a]volume={MUSIC_VOLUME}[bgm];"
+                f"[1:a][bgm]amix=inputs=2:duration=first:normalize=0[amixed]")
+        if duration:
+            fade_st = max(0.0, float(duration) - 1.2)
+            amix += f";[amixed]afade=t=out:st={fade_st:.2f}:d=1.2[aout]"
+            audio_map = "[aout]"
+        else:
+            audio_map = "[amixed]"
+        vf = vf + ";" + amix
+        print(f"    música de fondo: {os.path.basename(music)} (vol {MUSIC_VOLUME})")
+
+    tail = ["-t", f"{duration:.2f}"] if duration else ["-shortest"]
+    cmd = [
+        FFMPEG, "-y",
+        *inputs,
+        "-filter_complex", vf,
+        "-map", "[v]", "-map", audio_map,
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20",
+        "-c:a", "aac", "-b:a", "192k",
+        *tail, "-movflags", "+faststart",
+        out,
+    ]
+    subprocess.run(cmd, check=True, cwd=work_dir)

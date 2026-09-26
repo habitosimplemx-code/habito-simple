@@ -1,0 +1,23 @@
+# Prueba LOCAL del post de IMAGEN. Copia este archivo como run_image_test.ps1 y pon tu API key.
+# run_image_test.ps1 está en .gitignore para que NO se suba con la clave.
+# Uso: .\run_image_test.ps1
+$ErrorActionPreference = "Stop"
+Set-Location -Path $PSScriptRoot
+& .\.venv\Scripts\Activate.ps1
+
+# Fuente segura en Windows (Pillow busca un .ttf real)
+$env:IMG_FONT_FILE = "C:\Windows\Fonts\arialbd.ttf"
+
+# --- Identidad de marca ---
+$env:NICHE          = "salud y bienestar"
+$env:WATERMARK_TEXT = "@habitosimplemx"
+$env:KICKER_TEXT    = "HÁBITO SIMPLE"
+$env:DISCLAIMER_TEXT = "Info general · No sustituye a tu médico"
+
+# --- Gemini (guion + fondo IA) ---
+$env:GEMINI_API_KEY = "PEGA_TU_API_KEY"
+$env:GEMINI_MODEL   = "gemini-3.6-flash"
+$env:IMAGE_BACKEND  = "gemini"
+$env:IMAGE_MODEL    = "PON_EL_ID_ACTUAL_DE_IMAGEN"   # de Google AI Studio
+
+python image_test.py

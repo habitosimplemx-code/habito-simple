@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <!-- Hoja -->
+  <path d="M60 10 C94 32 98 84 60 112 C22 84 26 32 60 10 Z"
+        stroke="#1FA37A" stroke-width="7" stroke-linejoin="round" fill="none"/>
+  <!-- Vena -->
+  <path d="M60 20 L60 104" stroke="#1FA37A" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  <!-- Línea de latido (ECG) cruzando la hoja -->
+  <path d="M30 64 L48 64 L54 52 L61 80 L68 46 L74 64 L92 64"
+        stroke="#6FE0BE" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

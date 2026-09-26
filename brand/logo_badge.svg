@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1080" fill="none">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="36%" r="80%">
+      <stop offset="0%" stop-color="#155A4F"/>
+      <stop offset="58%" stop-color="#0E2A28"/>
+      <stop offset="100%" stop-color="#061816"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2FC892"/>
+      <stop offset="100%" stop-color="#128C68"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fondo app-icon -->
+  <rect x="0" y="0" width="1080" height="1080" rx="248" fill="url(#bg)"/>
+  <circle cx="540" cy="540" r="452" fill="none" stroke="#2FC892" stroke-width="6" opacity="0.16"/>
+
+  <!-- Hoja grande -->
+  <path d="M540 232 C776 388 800 736 540 892 C280 736 304 388 540 232 Z" fill="url(#leaf)"/>
+  <path d="M540 232 C776 388 800 736 540 892 C280 736 304 388 540 232 Z"
+        stroke="#6FE0BE" stroke-width="6" stroke-linejoin="round" fill="none" opacity="0.5"/>
+  <!-- Vena central -->
+  <path d="M540 300 L540 840" stroke="#0E2A28" stroke-width="10" stroke-linecap="round" opacity="0.28"/>
+  <!-- Línea de latido (ECG) -->
+  <path d="M360 566 L470 566 L500 566 L524 496 L552 648 L582 470 L602 566 L720 566"
+        stroke="#EAFBF4" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

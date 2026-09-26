@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" fill="none">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="80%">
+      <stop offset="0%" stop-color="#12463E"/>
+      <stop offset="60%" stop-color="#0E2A28"/>
+      <stop offset="100%" stop-color="#061816"/>
+    </radialGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2FC892"/>
+      <stop offset="100%" stop-color="#128C68"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+
+  <!-- Safe zone centrada (para YouTube/FB) -->
+  <g transform="translate(430 315)">
+    <!-- Mark -->
+    <g transform="translate(0 40) scale(2.15)">
+      <path d="M60 10 C94 32 98 84 60 112 C22 84 26 32 60 10 Z" fill="url(#leaf)"/>
+      <path d="M60 10 C94 32 98 84 60 112 C22 84 26 32 60 10 Z" stroke="#6FE0BE" stroke-width="4" fill="none" opacity="0.5"/>
+      <path d="M30 64 L48 64 L54 52 L61 80 L68 46 L74 64 L92 64" stroke="#EAFBF4" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </g>
+    <!-- Wordmark -->
+    <text x="305" y="140" font-family="DejaVu Sans" font-weight="bold" font-size="110" fill="#EAFBF4">Hábito Simple</text>
+    <text x="308" y="222" font-family="DejaVu Sans" font-weight="bold" font-size="40" fill="#2FC892" letter-spacing="1">TU VIDA SANA, UN HÁBITO A LA VEZ</text>
+  </g>
+
+  <!-- Chips inferiores -->
+  <g transform="translate(660 770)" font-family="DejaVu Sans" font-size="34" fill="#A9C6BE" text-anchor="middle">
+    <text x="300" y="0">Hábitos · Sueño · Movimiento · Prevención</text>
+    <text x="300" y="60" fill="#7FB8AC">⚠  Info general · No sustituye a tu médico</text>
+  </g>
+</svg>

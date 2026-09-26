@@ -1,0 +1,19 @@
+# Entorno local
+.venv/
+__pycache__/
+*.pyc
+
+# Lanzadores locales con la API key (NO subir)
+run_test.ps1
+run_image_test.ps1
+.env
+
+# Salidas
+build/
+*.mp4
+*.jpg
+*.jpeg
+*.png
+!brand/*.png
+!brand/*.svg
+!brand/*.ico
